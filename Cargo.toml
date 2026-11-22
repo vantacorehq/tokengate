@@ -1,0 +1,12 @@
+[package]
+name = "tokengate"
+version = "0.1.0"
+edition = "2021"
+description = "AI/LLM proxy with token accounting, rate limits and PII filtering. Pure Rust. Zero dependencies."
+license = "MIT"
+repository = "https://github.com/vantacorehq/tokengate"
+keywords = ["ai", "llm", "rate-limit", "pii", "proxy"]
+categories = ["web-programming", "api-bindings"]
+
+[dependencies]
+# zero dependencies
