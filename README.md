@@ -91,14 +91,6 @@ cargo test
 
 All tests pass with zero external crates.
 
-## Commercial / consulting
-
-Need multi-tenant isolation, billing webhooks, Redis-backed shared limits, or custom routing logic?
-
-Typical engagement: **$800 – $2 500** depending on depth.
-
-DM or open an issue.
-
 ## License
 
 MIT
