@@ -74,14 +74,13 @@ impl Gate {
     /// Commit actual usage (may be less or more than reserved).
     pub fn commit(&mut self, res: Reservation, actual: u32) {
         if let Some(entry) = self.buckets.get_mut(&res.user) {
-            // Adjust for difference
             if actual > res.reserved {
                 entry.2 = entry.2.saturating_add(actual - res.reserved);
             } else {
                 entry.2 = entry.2.saturating_sub(res.reserved - actual);
             }
         }
-        let _ = res; // consumed
+        let _ = res;
     }
 
     /// Release a reservation without usage.
@@ -107,26 +106,22 @@ pub fn scrub_pii(input: &str) -> String {
     let mut i = 0;
 
     while i < bytes.len() {
-        // Email
         if let Some(end) = find_email(bytes, i) {
             out.push_str("[REDACTED_EMAIL]");
             i = end;
             continue;
         }
-        // Simple phone (10-15 digits with separators)
         if let Some(end) = find_phone(bytes, i) {
             out.push_str("[REDACTED_PHONE]");
             i = end;
             continue;
         }
-        // Credit-card-like 13-19 digits
         if let Some(end) = find_cc(bytes, i) {
             out.push_str("[REDACTED_CC]");
             i = end;
             continue;
         }
 
-        // Copy one char (UTF-8 safe enough for this)
         if let Some(c) = input[i..].chars().next() {
             out.push(c);
             i += c.len_utf8();
@@ -139,7 +134,6 @@ pub fn scrub_pii(input: &str) -> String {
 }
 
 fn find_email(bytes: &[u8], start: usize) -> Option<usize> {
-    // Very simple: look for @ and surrounding alphanum
     if start + 5 > bytes.len() {
         return None;
     }
@@ -151,7 +145,6 @@ fn find_email(bytes: &[u8], start: usize) -> Option<usize> {
         }
     }
     let at = at?;
-    // crude check for local and domain
     if at > start && at + 2 < bytes.len() && bytes[at + 1].is_ascii_alphanumeric() {
         let end = (at + 1..bytes.len().min(at + 40))
             .find(|&j| !bytes[j].is_ascii_alphanumeric() && bytes[j] != b'.' && bytes[j] != b'-')
@@ -217,6 +210,12 @@ mod tests {
     }
 
     #[test]
+    fn scrub_phone_and_cc() {
+        let s = scrub_pii("call +1 (555) 123-4567 or use 4111111111111111");
+        assert!(s.contains("[REDACTED_PHONE]") || s.contains("[REDACTED_CC]"));
+    }
+
+    #[test]
     fn reserve_and_commit() {
         let mut g = Gate::new(Limit {
             rpm: 10,
@@ -225,5 +224,40 @@ mod tests {
         });
         let r = g.reserve("u1", 100).unwrap();
         g.commit(r, 80);
+    }
+
+    #[test]
+    fn rpm_limit() {
+        let mut g = Gate::new(Limit {
+            rpm: 2,
+            tpm: 10_000,
+            max_tokens_per_request: 500,
+        });
+        assert!(g.reserve("u1", 10).is_ok());
+        assert!(g.reserve("u1", 10).is_ok());
+        assert!(g.reserve("u1", 10).is_err());
+    }
+
+    #[test]
+    fn tpm_limit() {
+        let mut g = Gate::new(Limit {
+            rpm: 100,
+            tpm: 150,
+            max_tokens_per_request: 200,
+        });
+        assert!(g.reserve("u1", 100).is_ok());
+        assert!(g.reserve("u1", 60).is_err());
+    }
+
+    #[test]
+    fn release_frees_quota() {
+        let mut g = Gate::new(Limit {
+            rpm: 1,
+            tpm: 1000,
+            max_tokens_per_request: 500,
+        });
+        let r = g.reserve("u1", 50).unwrap();
+        g.release(r);
+        assert!(g.reserve("u1", 50).is_ok());
     }
 }

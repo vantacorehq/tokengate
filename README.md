@@ -1,52 +1,103 @@
 # tokengate
 
-AI/LLM proxy with token accounting, rate limits and PII filtering.
+**AI/LLM proxy with precise token accounting, rate limits and PII filtering.**
 
-Pure Rust. Zero dependencies. Crash-safe by construction.
+Pure Rust · Zero dependencies · Crash-safe by construction
 
-## What it solves
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Startups and SaaS burn thousands of dollars on OpenAI/Anthropic because of:
-- Runaway bots and infinite retry loops
-- Missing TPM/RPM limits
-- Personal data leaking into prompts
+---
+
+## The problem it solves
+
+Teams burning money on OpenAI / Anthropic / Claude usually lose budget because of:
+
+- runaway agents and infinite retry loops
+- missing or soft RPM / TPM limits
+- PII (emails, phones, cards) leaking into prompts and logs
+- no per-user or per-tenant isolation
+
+`tokengate` is a tiny, embeddable gate you put in front of any LLM call.
 
 ## Features
 
-- Exact token accounting (reserve / commit / release)
-- Token-bucket rate limiting (RPM + TPM)
-- PII redaction (email, phone, SSN-like, credit card patterns)
-- Idempotency keys
-- Simple, embeddable API
+| Feature | Description |
+|---------|-------------|
+| **Exact accounting** | `reserve` → call model → `commit` actual tokens |
+| **Token-bucket limits** | RPM + TPM per user / tenant |
+| **PII redaction** | email, phone, credit-card patterns (no regex crate) |
+| **Idempotency-ready** | reservation IDs for safe retries |
+| **Zero dependencies** | only `std` |
+| **Embeddable** | library, not a separate process |
 
-## Usage
+## Quick start
+
+```toml
+[dependencies]
+tokengate = { git = "https://github.com/vantacorehq/tokengate" }
+```
 
 ```rust
 use tokengate::{Gate, Limit};
 
-let mut gate = Gate::new(Limit {
-    rpm: 60,
-    tpm: 100_000,
-    max_tokens_per_request: 8_000,
-});
+fn main() {
+    let mut gate = Gate::new(Limit {
+        rpm: 60,
+        tpm: 100_000,
+        max_tokens_per_request: 8_000,
+    });
 
-// Reserve before calling the model
-let reservation = gate.reserve("user_42", 1200).expect("allowed");
+    // 1. Reserve before the expensive call
+    let reservation = gate.reserve("user_42", 1_200)
+        .expect("rate limit exceeded");
 
-// ... call OpenAI / Anthropic ...
+    // 2. Call your model (OpenAI, Anthropic, local…)
+    // let response = call_llm(...);
 
-// Commit actual usage
-gate.commit(reservation, 980);
+    // 3. Commit real usage
+    gate.commit(reservation, 980);
 
-// Or scrub PII from a prompt
-let clean = tokengate::scrub_pii("email me at alice@example.com");
-assert_eq!(clean, "email me at [REDACTED_EMAIL]");
+    // Bonus: scrub PII from any string
+    let clean = tokengate::scrub_pii("email me at alice@example.com or +1-555-123-4567");
+    assert!(clean.contains("[REDACTED_EMAIL]"));
+    assert!(clean.contains("[REDACTED_PHONE]"));
+}
 ```
 
-## Commercial
+## API surface
 
-Custom routing, billing limits, logging and multi-tenant isolation available.
-Typical integration: $800–$2500.
+```rust
+pub struct Limit {
+    pub rpm: u32,
+    pub tpm: u32,
+    pub max_tokens_per_request: u32,
+}
+
+impl Gate {
+    pub fn new(limit: Limit) -> Self;
+    pub fn reserve(&mut self, user: &str, estimated: u32) -> Result<Reservation, &'static str>;
+    pub fn commit(&mut self, res: Reservation, actual: u32);
+    pub fn release(&mut self, res: Reservation);
+}
+
+pub fn scrub_pii(input: &str) -> String;
+```
+
+## Tests
+
+```bash
+cargo test
+```
+
+All tests pass with zero external crates.
+
+## Commercial / consulting
+
+Need multi-tenant isolation, billing webhooks, Redis-backed shared limits, or custom routing logic?
+
+Typical engagement: **$800 – $2 500** depending on depth.
+
+DM or open an issue.
 
 ## License
 
